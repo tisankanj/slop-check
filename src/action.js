@@ -85,12 +85,29 @@ async function upsertComment(env, inputs, prNumber, body, fetchFn) {
     'User-Agent': 'slop-check',
   };
 
-  const list = await fetchFn(`${api}/issues/${prNumber}/comments?per_page=100`, { headers });
-  if (!list.ok) {
-    return list.status;
+  const commentsUrl = `${api}/issues/${prNumber}/comments?per_page=100`;
+  let page = commentsUrl;
+  let existing;
+  const visited = new Set();
+  while (page) {
+    const url = new URL(page);
+    const allowed = new URL(commentsUrl);
+    if (url.origin !== allowed.origin || url.pathname !== allowed.pathname ||
+        url.username || url.password || visited.has(url.href) || visited.size >= 1000) {
+      throw new Error('Invalid or repeated comment pagination link');
+    }
+    visited.add(url.href);
+    const list = await fetchFn(url.href, { headers });
+    if (!list.ok) {
+      return list.status;
+    }
+    const comments = await list.json();
+    existing = comments.find((comment) => typeof comment.body === 'string' && comment.body.startsWith(MARKER));
+    if (existing) break;
+    const link = list.headers?.get('link') || '';
+    const next = link.split(',').map((part) => /^\s*<([^>]+)>;\s*rel="next"\s*$/.exec(part)).find(Boolean);
+    page = next ? new URL(next[1], url).href : null;
   }
-  const comments = await list.json();
-  const existing = comments.find((comment) => typeof comment.body === 'string' && comment.body.startsWith(MARKER));
 
   const request = existing
     ? { url: `${api}/issues/comments/${existing.id}`, method: 'PATCH' }

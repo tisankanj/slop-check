@@ -39,7 +39,7 @@ function fakeFetch(responses) {
   const fetchFn = async (url, options = {}) => {
     calls.push({ url, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null });
     const next = responses.shift() || { status: 200, json: [] };
-    return { ok: next.status < 300, status: next.status, json: async () => next.json };
+    return { ok: next.status < 300, status: next.status, headers: { get: () => next.link || null }, json: async () => next.json };
   };
   return { calls, fetchFn };
 }
@@ -206,3 +206,26 @@ test('the action entry runs even when its path goes through a symlink', () => {
   });
   assert.equal(readFileSync(env.GITHUB_OUTPUT, 'utf8'), 'score=25\n');
 });
+
+for (const scenario of ['found', 'missing', 'rate limited', 'foreign host', 'cycle']) {
+  test(`paginated comments: ${scenario}`, async () => {
+    const { repo, env } = setup();
+    const first = `${env.GITHUB_API_URL}/repos/someone/app/issues/7/comments?per_page=100`;
+    const second = `${first}&page=2`;
+    const next = scenario === 'foreign host' ? 'https://elsewhere.test/comments' : second;
+    const responses = [
+      { status: 200, json: [{ id: 1, body: 'unrelated' }], link: `<${next}>; rel="next"` },
+      { status: scenario === 'rate limited' ? 429 : 200,
+        json: scenario === 'found' ? [{ id: 42, body: `${MARKER} old` }] : [],
+        link: scenario === 'cycle' ? `<${first}>; rel="next"` : null },
+      { status: 200, json: {} },
+    ];
+    const { calls, fetchFn } = fakeFetch(responses);
+    await quietly(() => runAction({ env, fetchFn, cwd: repo }));
+    const expected = [['GET', first]];
+    if (scenario !== 'foreign host') expected.push(['GET', second]);
+    if (scenario === 'found') expected.push(['PATCH', `${env.GITHUB_API_URL}/repos/someone/app/issues/comments/42`]);
+    if (scenario === 'missing') expected.push(['POST', first.split('?')[0]]);
+    assert.deepEqual(calls.map(({ method, url }) => [method, url]), expected);
+  });
+}
