@@ -21,6 +21,9 @@ describe('empty-catch', () => {
     assert.ok(ruleIds('a.js', lines('} catch (err) {', '}')).includes('empty-catch'));
     assert.ok(ruleIds('a.py', lines('except: pass')).includes('empty-catch'));
     assert.ok(ruleIds('a.py', lines('except Exception:', '    pass')).includes('empty-catch'));
+    assert.ok(ruleIds('a.go', lines('if err != nil {}')).includes('empty-catch'));
+    assert.ok(ruleIds('a.go', lines('if err != nil { }')).includes('empty-catch'));
+    assert.ok(ruleIds('a.go', lines('if err != nil {', '}')).includes('empty-catch'));
   });
   test('leaves deliberate ignores alone (calibration)', () => {
     assert.ok(!ruleIds('a.ts', lines('try { a() } catch {}')).includes('empty-catch'));
@@ -30,9 +33,13 @@ describe('empty-catch', () => {
   test('leaves handled errors alone', () => {
     assert.ok(!ruleIds('a.js', lines('} catch (e) { log(e) }')).includes('empty-catch'));
     assert.ok(!ruleIds('a.js', lines('} catch (e) {', '  log(e);')).includes('empty-catch'));
+    assert.ok(!ruleIds('a.go', lines('if err != nil { return err }')).includes('empty-catch'));
+    assert.ok(!ruleIds('a.go', lines('if err != nil {', '  return err')).includes('empty-catch'));
+    assert.ok(!ruleIds('a.go', lines('if err != nil {', '} else {', '  fallback()', '}')).includes('empty-catch'));
   });
   test('needs the closing line to be added right below', () => {
     assert.ok(!ruleIds('a.js', [[3, '} catch (err) {'], [9, '}']]).includes('empty-catch'));
+    assert.ok(!ruleIds('a.go', [[3, 'if err != nil {'], [9, '}']]).includes('empty-catch'));
   });
 });
 

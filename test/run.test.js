@@ -195,3 +195,15 @@ test('staged mode works in a repo with no commits yet', () => {
   git(dir, 'add', 'a.js');
   assert.deepEqual(ruleIds(runCheck({ cwd: dir, mode: 'staged' })), ['debug-leftover']);
 });
+
+test('branch mode flags empty Go if err != nil block and ignores handled errors', () => {
+  const dir = makeRepo();
+  git(dir, 'checkout', '-q', '-b', 'feature');
+  commitFile(
+    dir,
+    'main.go',
+    'package main\n\nfunc run() error {\n\tif err != nil {\n\t}\n\tif err != nil {\n\t\treturn err\n\t}\n\treturn nil\n}\n',
+  );
+  const result = runCheck({ cwd: dir, mode: 'branch' });
+  assert.deepEqual(result.findings.map((f) => [f.rule, f.file, f.line]), [['empty-catch', 'main.go', 4]]);
+});

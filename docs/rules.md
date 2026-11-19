@@ -17,8 +17,9 @@ This file is full of bad examples on purpose, so the repo's own config ignores i
 
 High. On by default.
 
-Catches a named `catch` block with nothing in it, or a broad Python `except`
-(`except:`, `except Exception:`) that only says `pass`.
+Catches a named `catch` block with nothing in it, a broad Python `except`
+(`except:`, `except Exception:`) that only says `pass`, or an empty Go
+`if err != nil` block.
 
 Why: the error disappears. When it fails in production there is no trace of it.
 
@@ -32,6 +33,17 @@ try {
 } catch (error) {
   logger.error('user.save_failed', { userId: user.id, error });
   throw error;
+}
+```
+
+```go
+// Bad
+if err != nil {
+}
+
+// Good
+if err != nil {
+	return err
 }
 ```
 

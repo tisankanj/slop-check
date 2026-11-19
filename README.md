@@ -125,7 +125,7 @@ job summary but no comment.
 
 | Rule | Weight | Catches |
 | --- | --- | --- |
-| `empty-catch` | high | `catch (e) {}` and `except: pass` |
+| `empty-catch` | high | `catch (e) {}`, `except: pass` and `if err != nil {}` |
 | `placeholder-code` | high | `// ... existing code ...`, `// TODO: implement` |
 | `catch-rethrow` | medium | A catch block that only rethrows |
 | `debug-leftover` | medium | `debugger`, `console.log('user:', user)`, `breakpoint()` |

@@ -78,6 +78,8 @@ const BUZZWORDS = [
 // in human code, so only a named catch or a broad Python except counts.
 const EMPTY_CATCH_SAME_LINE = /\bcatch\s*\([^)]*\)\s*\{\s*\}/;
 const CATCH_OPENS_BLOCK = /\bcatch\s*\([^)]*\)\s*\{\s*$/;
+const GO_EMPTY_ERR_SAME_LINE = /\bif\s+err\s*!=\s*nil\s*\{\s*\}/;
+const GO_ERR_OPENS_BLOCK = /\bif\s+err\s*!=\s*nil\s*\{\s*$/;
 const BROAD_EXCEPT = String.raw`except(?:\s+(?:Exception|BaseException)(?:\s+as\s+\w+)?)?`;
 const PYTHON_EXCEPT_PASS = new RegExp(String.raw`^\s*${BROAD_EXCEPT}\s*:\s*pass\s*$`);
 const PYTHON_BROAD_EXCEPT_OPENS = new RegExp(String.raw`^\s*${BROAD_EXCEPT}\s*:\s*$`);
@@ -156,6 +158,9 @@ function isEmptyCatch(ctx) {
   const nextLine = ctx.next ? ctx.next.text.trim() : '';
   if (ctx.file.extension === 'py') {
     return PYTHON_EXCEPT_PASS.test(code) || (PYTHON_BROAD_EXCEPT_OPENS.test(code) && nextLine === 'pass');
+  }
+  if (ctx.file.extension === 'go') {
+    return GO_EMPTY_ERR_SAME_LINE.test(code) || (GO_ERR_OPENS_BLOCK.test(code) && nextLine === '}');
   }
   return EMPTY_CATCH_SAME_LINE.test(code) || (CATCH_OPENS_BLOCK.test(code) && nextLine.startsWith('}'));
 }
