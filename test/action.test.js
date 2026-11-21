@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runAction } from '../src/action.js';
+import { formatAnnotations, runAction } from '../src/action.js';
 import { commitFile, git, makeDirtyBranch } from './helpers.js';
 
 const MARKER = '<!-- slop-check -->';
@@ -205,4 +205,85 @@ test('the action entry runs even when its path goes through a symlink', () => {
     encoding: 'utf8',
   });
   assert.equal(readFileSync(env.GITHUB_OUTPUT, 'utf8'), 'score=25\n');
+});
+
+test('prints inline warning annotations for file findings by default', async () => {
+  const { repo, env } = setup({ inputs: { INPUT_COMMENT: 'false' } });
+  const { output } = await captureStdout(() => runAction({ env, fetchFn: fakeFetch([]).fetchFn, cwd: repo }));
+  assert.match(output, /^::warning file=b\.js,line=3,title=empty-catch::.+$/m);
+});
+
+test('annotations: false suppresses inline annotations', async () => {
+  const { repo, env } = setup({ inputs: { INPUT_COMMENT: 'false', INPUT_ANNOTATIONS: 'false' } });
+  const { output } = await captureStdout(() => runAction({ env, fetchFn: fakeFetch([]).fetchFn, cwd: repo }));
+  assert.doesNotMatch(output, /^::warning file=/m);
+});
+
+test('skips commit-message findings when printing annotations', async () => {
+  const { repo, env } = setup({ inputs: { INPUT_COMMENT: 'false' } });
+  commitFile(repo, 'clean2.js', 'const ok = 2;\n', 'feat: supercharge everything');
+  const { output } = await captureStdout(() => runAction({ env, fetchFn: fakeFetch([]).fetchFn, cwd: repo }));
+  const annotations = output.match(/^::warning file=.*$/gm) || [];
+  assert.equal(annotations.length, 1);
+  assert.match(annotations[0], /^::warning file=b\.js,line=3,title=empty-catch::/);
+});
+
+test('caps annotations at 10 and prints highest-weight findings first', async () => {
+  const { repo, env } = setup({ inputs: { INPUT_COMMENT: 'false' } });
+  const lines = [
+    '// get alpha',
+    'function getAlpha() {}',
+    '// get beta',
+    'function getBeta() {}',
+    '// get gamma',
+    'function getGamma() {}',
+    '// get delta',
+    'function getDelta() {}',
+    '// get epsilon',
+    'function getEpsilon() {}',
+    'debugger;',
+    'debugger;',
+    'debugger;',
+    'debugger;',
+    'debugger;',
+    'debugger;',
+    '// TODO: implement',
+  ].join('\n') + '\n';
+  commitFile(repo, 'many.js', lines);
+  const { output } = await captureStdout(() => runAction({ env, fetchFn: fakeFetch([]).fetchFn, cwd: repo }));
+  const annotations = output.match(/^::warning file=.*$/gm) || [];
+  assert.equal(annotations.length, 10);
+  // First two must be the high-weight findings (empty-catch in b.js, placeholder-code in many.js).
+  assert.match(annotations[0], /file=b\.js,line=3,title=empty-catch::/);
+  assert.match(annotations[1], /file=many\.js,line=17,title=placeholder-code::/);
+  // Next six must be medium-weight debug-leftover findings.
+  for (let i = 2; i < 8; i += 1) {
+    assert.match(annotations[i], /file=many\.js,line=\d+,title=debug-leftover::/);
+  }
+  // Remaining two slots go to low-weight restating-comment findings.
+  assert.match(annotations[8], /file=many\.js,line=1,title=restating-comment::/);
+  assert.match(annotations[9], /file=many\.js,line=3,title=restating-comment::/);
+});
+
+test('escapes commas and percent signs in file paths for annotations', async () => {
+  const { repo, env } = setup({ inputs: { INPUT_COMMENT: 'false' } });
+  commitFile(repo, 'a,b%c.js', 'debugger;\n');
+  const { output } = await captureStdout(() => runAction({ env, fetchFn: fakeFetch([]).fetchFn, cwd: repo }));
+  assert.match(output, /^::warning file=a%2Cb%25c\.js,line=1,title=debug-leftover::/m);
+});
+
+test('formatAnnotations escapes workflow command characters and skips non-file findings', () => {
+  const annotations = formatAnnotations([
+    { rule: 'buzzword', weight: 1, message: 'Brochure phrase.', commit: 'abc1234' },
+    {
+      rule: 'rule:a,b%c',
+      weight: 5,
+      message: '100% bad\r\nnext line: ok, fine',
+      file: '::error::a,b%c\r\n.js',
+      line: 4,
+    },
+  ]);
+  assert.deepEqual(annotations, [
+    '::warning file=%3A%3Aerror%3A%3Aa%2Cb%25c%0D%0A.js,line=4,title=rule%3Aa%2Cb%25c::100%25 bad%0D%0Anext line: ok, fine',
+  ]);
 });

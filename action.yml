@@ -13,6 +13,10 @@ inputs:
     description: Post one PR comment with the score and keep it updated. Set to false to only write the job summary.
     required: false
     default: 'true'
+  annotations:
+    description: Print inline annotations for findings on the PR diff. Set to false to disable.
+    required: false
+    default: 'true'
   github-token:
     description: Token used to post the PR comment.
     required: false

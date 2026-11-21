@@ -13,12 +13,15 @@ const MARKER = '<!-- slop-check -->';
 const ZERO_SHA = '0'.repeat(40);
 // GitHub rejects comments over 65536 characters.
 const MAX_REPORT_LENGTH = 60000;
+// GitHub shows at most 10 warning annotations per step.
+const MAX_ANNOTATIONS = 10;
 
 function readInputs(env) {
   const maxScoreText = (env['INPUT_MAX-SCORE'] || '').trim();
   return {
     maxScore: maxScoreText === '' ? null : Number(maxScoreText),
     comment: (env.INPUT_COMMENT || 'true').trim() !== 'false',
+    annotations: (env.INPUT_ANNOTATIONS || 'true').trim().toLowerCase() !== 'false',
     token: env['INPUT_GITHUB-TOKEN'] || '',
   };
 }
@@ -55,6 +58,46 @@ function codeFence(text) {
 function writeLog(text) {
   const token = randomUUID();
   process.stdout.write(`::stop-commands::${token}\n${text}::${token}::\n`);
+}
+
+function escapeMessage(value) {
+  return String(value)
+    .replaceAll('%', '%25')
+    .replaceAll('\r', '%0D')
+    .replaceAll('\n', '%0A');
+}
+
+function escapeProperty(value) {
+  return escapeMessage(value)
+    .replaceAll(':', '%3A')
+    .replaceAll(',', '%2C');
+}
+
+function byWeightThenLocation(a, b) {
+  if (a.weight !== b.weight) {
+    return b.weight - a.weight;
+  }
+  if (a.file !== b.file) {
+    return a.file < b.file ? -1 : 1;
+  }
+  return a.line - b.line;
+}
+
+export function formatAnnotations(findings) {
+  const fileFindings = findings.filter((finding) => finding.file && Number.isInteger(finding.line));
+  fileFindings.sort(byWeightThenLocation);
+  return fileFindings.slice(0, MAX_ANNOTATIONS).map((finding) => {
+    const file = escapeProperty(finding.file);
+    const title = escapeProperty(finding.rule);
+    const message = escapeMessage(finding.message);
+    return `::warning file=${file},line=${finding.line},title=${title}::${message}`;
+  });
+}
+
+function writeAnnotations(findings) {
+  for (const line of formatAnnotations(findings)) {
+    process.stdout.write(`${line}\n`);
+  }
 }
 
 function buildReport(result) {
@@ -125,6 +168,9 @@ export async function runAction({ env, fetchFn, cwd }) {
   }
 
   writeLog(formatText(result, { color: false }));
+  if (inputs.annotations) {
+    writeAnnotations(result.findings);
+  }
   const report = buildReport(result);
   if (env.GITHUB_STEP_SUMMARY) {
     appendFileSync(env.GITHUB_STEP_SUMMARY, report);

@@ -109,13 +109,14 @@ jobs:
           max-score: 30
 ```
 
-The action writes the report to the job summary and keeps one comment on the
-pull request up to date.
+The action writes the report to the job summary, prints inline annotations on
+the diff, and keeps one comment on the pull request up to date.
 
 | Input | Default | What it does |
 | --- | --- | --- |
 | `max-score` | empty | Fail the job when the score is above this number. Empty never fails. |
 | `comment` | `true` | Post one PR comment and update it on every push. |
+| `annotations` | `true` | Show findings as inline annotations on the diff. |
 | `github-token` | `github.token` | Token used for the comment. |
 
 Output: `score`. Pull requests from forks get a read-only token, so they get the
