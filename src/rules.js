@@ -83,6 +83,15 @@ const PYTHON_EXCEPT_PASS = new RegExp(String.raw`^\s*${BROAD_EXCEPT}\s*:\s*pass\
 const PYTHON_BROAD_EXCEPT_OPENS = new RegExp(String.raw`^\s*${BROAD_EXCEPT}\s*:\s*$`);
 const PYTHON_EXCEPT_OPENS = /^\s*except\b([^:]*):\s*$/;
 
+// Ruby `rescue` with no class, or only StandardError or Exception, catches every
+// error. A named class such as `rescue LoadError` is a deliberate choice, like
+// `except ImportError: pass`. `x rescue nil` is not a block, `rescue => @error`
+// saves the error on the object, and a comment explains why it is dropped.
+const RUBY_BROAD_RESCUE = String.raw`rescue(?:\s+(?:::)?(?:StandardError|Exception))?(?:\s*=>\s*\w+)?`;
+const RUBY_RESCUE_OPENS = new RegExp(String.raw`^\s*${RUBY_BROAD_RESCUE}\s*$`);
+const RUBY_RESCUE_SAME_LINE = new RegExp(String.raw`(?:^|[\s;])${RUBY_BROAD_RESCUE}\s*;\s*end\b`);
+const RUBY_END_LINE = /^end\s*(?:#.*)?$/;
+
 const RETHROW_SAME_LINE = /\bcatch\s*\(\s*(\w+)\s*\)\s*\{\s*throw\s+(\w+)\s*;?\s*\}/;
 const CATCH_WITH_NAME_OPENS = /\bcatch\s*\(\s*(\w+)\s*\)\s*\{\s*$/;
 
@@ -148,6 +157,28 @@ function isHistoryComment(comment) {
   return nextWords[1].endsWith('ing');
 }
 
+// True when only blank lines sit between `rescue` and `end`. A comment or any
+// expression (such as `nil`) means the rescue explains or returns something.
+function rubyBodyIsEmpty(lookahead) {
+  for (const line of lookahead) {
+    const text = line.text.trim();
+    if (RUBY_END_LINE.test(text)) {
+      return true;
+    }
+    if (text !== '') {
+      return false;
+    }
+  }
+  return false;
+}
+
+function isEmptyRubyRescue(ctx, code) {
+  if (RUBY_RESCUE_SAME_LINE.test(code)) {
+    return true;
+  }
+  return RUBY_RESCUE_OPENS.test(code) && rubyBodyIsEmpty(ctx.lookahead || []);
+}
+
 function isEmptyCatch(ctx) {
   if (ctx.isCommentLine) {
     return false;
@@ -156,6 +187,9 @@ function isEmptyCatch(ctx) {
   const nextLine = ctx.next ? ctx.next.text.trim() : '';
   if (ctx.file.extension === 'py') {
     return PYTHON_EXCEPT_PASS.test(code) || (PYTHON_BROAD_EXCEPT_OPENS.test(code) && nextLine === 'pass');
+  }
+  if (ctx.file.extension === 'rb') {
+    return isEmptyRubyRescue(ctx, code);
   }
   return EMPTY_CATCH_SAME_LINE.test(code) || (CATCH_OPENS_BLOCK.test(code) && nextLine.startsWith('}'));
 }

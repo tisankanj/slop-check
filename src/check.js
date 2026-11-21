@@ -47,6 +47,23 @@ function readComments(lines, style) {
   return result;
 }
 
+// Rules that read a block (a Ruby rescue with blank lines in it) need more than one
+// line below. Only lines this change also added, in an unbroken run, are returned.
+const LOOKAHEAD_LINES = 4;
+
+function readLookahead(lines, comments, index) {
+  const result = [];
+  let expected = lines[index].number + 1;
+  for (let i = index + 1; i < lines.length && result.length < LOOKAHEAD_LINES; i += 1) {
+    if (lines[i].number !== expected) {
+      break;
+    }
+    result.push({ number: lines[i].number, text: lines[i].text, ...comments[i] });
+    expected += 1;
+  }
+  return result;
+}
+
 export function checkFile(file, enabled) {
   const language = getLanguage(file.path);
   if (!language) {
@@ -79,7 +96,7 @@ export function checkFile(file, enabled) {
 
     const previous = file.lines[i - 1];
     const previousIsComment = Boolean(previous && previous.number === line.number - 1 && comments[i - 1].isCommentLine);
-    const ctx = { text: line.text, ...comments[i], previousIsComment, next, file: info };
+    const ctx = { text: line.text, ...comments[i], previousIsComment, next, lookahead: readLookahead(file.lines, comments, i), file: info };
     for (const rule of rules) {
       if (rule.check(ctx)) {
         findings.push({ rule: rule.id, weight: rule.weight, message: rule.message, file: file.path, line: line.number });

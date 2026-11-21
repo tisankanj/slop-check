@@ -17,8 +17,10 @@ This file is full of bad examples on purpose, so the repo's own config ignores i
 
 High. On by default.
 
-Catches a named `catch` block with nothing in it, or a broad Python `except`
-(`except:`, `except Exception:`) that only says `pass`.
+Catches a named `catch` block with nothing in it, a broad Python `except`
+(`except:`, `except Exception:`) that only says `pass`, or a broad Ruby `rescue`
+(`rescue`, `rescue => e`, `rescue StandardError => e`, `rescue Exception`)
+followed directly by `end`.
 
 Why: the error disappears. When it fails in production there is no trace of it.
 
@@ -35,8 +37,25 @@ try {
 }
 ```
 
-Not flagged: `catch {}` without a name and `except ImportError: pass`. Both are
-usually a deliberate choice.
+```ruby
+# Bad
+begin
+  charge(card)
+rescue => e
+end
+
+# Good
+begin
+  charge(card)
+rescue => e
+  logger.error(e)
+  raise
+end
+```
+
+Not flagged: `catch {}` without a name, `except ImportError: pass`, and a Ruby
+`rescue` with a specific error class (such as `rescue LoadError`) or a comment
+explaining why the error is ignored. These are usually deliberate choices.
 
 ## placeholder-code
 
